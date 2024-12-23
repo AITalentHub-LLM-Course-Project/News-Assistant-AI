@@ -77,8 +77,7 @@ async def run_downloader():
                 parser_process = subprocess.run(
                     ["python", "-m", "backend.news_fetcher"],
                     capture_output=True,
-                    text=True,
-                    check=True
+                    text=True
                 )
                 
                 if parser_process.returncode == 0:
@@ -88,7 +87,9 @@ async def run_downloader():
                     )
                 else:
                     logger.error(
-                        f"Ошибка при обработке сообщений: {parser_process.stderr}"
+                        f"Ошибка при обработке сообщений:\n"
+                        f"STDOUT: {parser_process.stdout}\n"
+                        f"STDERR: {parser_process.stderr}"
                     )
             else:
                 logger.error(
