@@ -40,8 +40,8 @@ async def download_channel_content(api_id, api_hash, channel_username, limit=100
                     f.write(f"[{msg.date}] {msg.text}\n\n")
             
             # Download media
-            if msg.media:
-                await client.download_media(msg, directory)
+            # if msg.media:
+            #     await client.download_media(msg, directory)
                 
         print(f"Downloaded content saved to {directory}")
         
