@@ -5,6 +5,7 @@ import re
 from datetime import datetime
 from dotenv import load_dotenv
 from backend.database import create_table, insert_news
+import sys
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -61,7 +62,8 @@ def fetch_news_from_telegram():
     downloads_dir = 'telegram_downloads_mosnow_'
     
     # Получаем название канала из переменных окружения
-    channel_name = os.getenv('TELEGRAM_CHANNEL', 'mosnow')
+    channel_name = os.getenv('TELEGRAM_CHANNEL')
+    logging.info(f"Используется канал: {channel_name}")
     
     # Поиск последней папки с выгрузкой
     download_folders = [d for d in os.listdir() if d.startswith(downloads_dir)]
@@ -71,6 +73,7 @@ def fetch_news_from_telegram():
     
     latest_folder = max(download_folders)
     messages_file = os.path.join(latest_folder, 'messages.txt')
+    logging.info(f"Обработка файла: {messages_file}")
     
     try:
         with open(messages_file, 'r', encoding='utf-8') as f:
@@ -83,11 +86,22 @@ def fetch_news_from_telegram():
                     'timestamp': message['timestamp'],
                     'text': message['text']
                 })
-                
-        logging.info(f"Прочитано {len(news_items)} сообщений из {messages_file}")
+                logging.debug(
+                    f"Добавлено сообщение: timestamp={message['timestamp']}, "
+                    f"длина текста={len(message['text'])} символов"
+                )
+        
+        logging.info(
+            f"Прочитано {len(news_items)} сообщений из {messages_file} "
+            f"для канала {channel_name}"
+        )
         
     except Exception as e:
-        logging.error(f"Ошибка при чтении файла {messages_file}: {str(e)}")
+        logging.error(
+            f"Ошибка при чтении файла {messages_file}: {str(e)}\n"
+            f"Тип ошибки: {type(e).__name__}"
+        )
+        raise
     
     return news_items
 
@@ -104,18 +118,27 @@ def fetch_and_store_news():
         news_items = fetch_news_from_telegram()
         
         # Сохранение новостей в БД
+        new_items_count = 0
         for news in news_items:
-            insert_news(
+            if insert_news(
                 news['tg_ch_name'],
                 news['timestamp'],
                 news['text']
-            )
+            ):
+                new_items_count += 1
         
-        logging.info(f"Собрано и сохранено {len(news_items)} новостей")
+        logging.info(
+            f"Обработано {len(news_items)} сообщений, "
+            f"добавлено {new_items_count} новых"
+        )
         
     except Exception as e:
         logging.error(f"Ошибка при сборе новостей: {str(e)}")
         raise
 
 if __name__ == "__main__":
-    fetch_and_store_news()
+    try:
+        fetch_and_store_news()
+    except Exception as e:
+        logging.error(f"Критическая ошибка в news_fetcher: {str(e)}", exc_info=True)
+        sys.exit(1)
