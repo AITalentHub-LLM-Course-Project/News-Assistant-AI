@@ -11,7 +11,8 @@ def create_table():
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tg_ch_name TEXT,
                     timestamp DATETIME,
-                    text TEXT
+                    text TEXT,
+                    message_link TEXT
                 )
             ''')
             
@@ -52,7 +53,7 @@ def is_duplicate(timestamp, text):
         count = cursor.fetchone()[0]
         return count > 0
 
-def insert_news(tg_ch_name, timestamp, text):
+def insert_news(tg_ch_name, timestamp, text, message_link):
     try:
         if is_duplicate(timestamp, text):
             logging.info(f"Пропуск дубликата сообщения от {timestamp}")
@@ -61,9 +62,9 @@ def insert_news(tg_ch_name, timestamp, text):
         with closing(sqlite3.connect('news.db')) as conn:
             with conn:
                 conn.execute('''
-                    INSERT INTO news (tg_ch_name, timestamp, text)
-                    VALUES (?, ?, ?)
-                ''', (tg_ch_name, timestamp, text))
+                    INSERT INTO news (tg_ch_name, timestamp, text, message_link)
+                    VALUES (?, ?, ?, ?)
+                ''', (tg_ch_name, timestamp, text, message_link))
         return True
     except sqlite3.IntegrityError:
         logging.info(f"Дубликат сообщения от {timestamp}")

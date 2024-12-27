@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -42,67 +43,94 @@ logger.addHandler(console_handler)
 # Получение конфигурации из .env
 TELEGRAM_API_ID = os.getenv('TELEGRAM_API_ID')
 TELEGRAM_API_HASH = os.getenv('TELEGRAM_API_HASH')
-CHANNEL_NAME = os.getenv('TELEGRAM_CHANNEL')
+TELEGRAM_CHANNELS = os.getenv('TELEGRAM_CHANNELS')
 DOWNLOAD_INTERVAL = int(os.getenv('DOWNLOAD_INTERVAL_MINUTES', 1))
 MESSAGE_LIMIT = int(os.getenv('MESSAGE_LIMIT', 10))
+TELEGRAM_DATA_DIR = os.getenv('TELEGRAM_DATA_DIR', 'telegram_channels_data')
+
+def is_new_channel(channel_name):
+    """Проверяет, является ли канал новым (отсутствует папка канала)"""
+    channel_dir = Path(TELEGRAM_DATA_DIR) / channel_name
+    return not channel_dir.exists()
+
+def ensure_channel_directory(channel_name):
+    """Создает директорию для канала, если она не существует"""
+    channel_dir = Path(TELEGRAM_DATA_DIR) / channel_name
+    channel_dir.mkdir(parents=True, exist_ok=True)
+    return channel_dir
 
 async def run_downloader():
     while True:
         try:
-            logger.info(f"Начало цикла загрузки для канала {CHANNEL_NAME}")
+            # Получаем список каналов
+            channels = TELEGRAM_CHANNELS.split(',') if TELEGRAM_CHANNELS else []
+            if not channels:
+                logger.error("Не указаны каналы в TELEGRAM_CHANNELS")
+                await asyncio.sleep(DOWNLOAD_INTERVAL * 60)
+                continue
+
+            logger.info(f"Начало цикла загрузки для каналов: {channels}")
             start_time = datetime.now()
             
-            # Запуск скрипта загрузки
-            logger.info("Запуск download_channels.py")
-            download_process = subprocess.Popen(
-                [
-                    "python", "backend/download_channels.py",
-                    "--api-id", TELEGRAM_API_ID,
-                    "--api-hash", TELEGRAM_API_HASH,
-                    "--channel", CHANNEL_NAME,
-                    "--limit", str(MESSAGE_LIMIT)
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            stdout, stderr = download_process.communicate()
+            for channel in channels:
+                try:
+                    # Проверяем, новый ли это канал
+                    message_limit = 10000 if is_new_channel(channel) else MESSAGE_LIMIT
+                    channel_dir = ensure_channel_directory(channel)
+
+                    # Запуск скрипта загрузки
+                    logger.info(f"Запуск download_channels.py для {channel} с лимитом {message_limit}")
+                    download_process = subprocess.Popen(
+                        [
+                            "python", "backend/download_channels.py",
+                            "--api-id", TELEGRAM_API_ID,
+                            "--api-hash", TELEGRAM_API_HASH,
+                            "--channel", channel,
+                            "--limit", str(message_limit),
+                            "--output-dir", str(channel_dir)
+                        ],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    
+                    stdout, stderr = download_process.communicate()
+                    
+                    if download_process.returncode == 0:
+                        logger.info(f"Загрузка сообщений для канала {channel} успешно завершена")
+                        if stdout:
+                            logger.debug(f"Вывод download_channels.py: {stdout.decode('utf-8')}")
+                    else:
+                        logger.error(
+                            f"Ошибка при загрузке сообщений для канала {channel}. "
+                            f"Код: {download_process.returncode}\n"
+                            f"Ошибка: {stderr.decode('utf-8')}"
+                        )
+                except Exception as e:
+                    logger.error(f"Ошибка при обработке канала {channel}: {str(e)}")
+                    continue
             
-            if download_process.returncode == 0:
-                logger.info("Загрузка сообщений успешно завершена")
-                if stdout:
-                    logger.debug(f"Вывод download_channels.py: {stdout.decode('utf-8')}")
-                
-                # Запуск парсера и сохранения в БД
-                logger.info("Запуск news_fetcher.py")
-                parser_process = subprocess.run(
-                    ["python", "-m", "backend.news_fetcher"],
-                    capture_output=True,
-                    text=True
-                )
-                
-                if parser_process.returncode == 0:
-                    execution_time = datetime.now() - start_time
-                    logger.info(
-                        f"Цикл успешно завершен. Время выполнения: {execution_time}"
-                    )
-                else:
-                    logger.error(
-                        f"Ошибка при обработке сообщений:\n"
-                        f"STDOUT: {parser_process.stdout}\n"
-                        f"STDERR: {parser_process.stderr}"
-                    )
+            # Запуск парсера и сохранения в БД
+            logger.info("Запуск news_fetcher.py")
+            parser_process = subprocess.run(
+                ["python", "-m", "backend.news_fetcher"],
+                capture_output=True,
+                text=True
+            )
+            
+            if parser_process.returncode == 0:
+                execution_time = datetime.now() - start_time
+                logger.info(f"Цикл успешно завершен. Время выполнения: {execution_time}")
             else:
                 logger.error(
-                    f"Ошибка при загрузке сообщений. Код: {download_process.returncode}"
-                    f"\nОшибка: {stderr.decode('utf-8')}"
+                    f"Ошибка при обработке сообщений:\n"
+                    f"STDOUT: {parser_process.stdout}\n"
+                    f"STDERR: {parser_process.stderr}"
                 )
             
         except Exception as e:
             logger.exception(f"Критическая ошибка в цикле загрузки: {str(e)}")
         
-        logger.info(
-            f"Ожидание {DOWNLOAD_INTERVAL} минут до следующего запуска"
-        )
+        logger.info(f"Ожидание {DOWNLOAD_INTERVAL} минут до следующего запуска")
         await asyncio.sleep(DOWNLOAD_INTERVAL * 60)
 
 if __name__ == "__main__":
