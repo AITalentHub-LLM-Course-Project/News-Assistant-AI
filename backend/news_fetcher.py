@@ -25,7 +25,7 @@ TELEGRAM_DATA_DIR = os.getenv('TELEGRAM_DATA_DIR', 'telegram_channels_data')
 UPDATE_INTERVAL = int(os.getenv('DOWNLOAD_INTERVAL_MINUTES', 1))
 
 KEYWORDS = [
-    'самокат', 'сим', 'мобильности',
+    'самокат', ' сим', 'мобильности',
     'электросамокат', 'кикшеринг'
 ]
 
