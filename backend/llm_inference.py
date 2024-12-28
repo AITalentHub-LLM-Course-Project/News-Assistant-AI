@@ -1,9 +1,16 @@
 import os
+import logging
 from dotenv import load_dotenv
 from langchain.chat_models.gigachat import GigaChat
 from langchain.schema import HumanMessage, SystemMessage
 from backend.database import fetch_latest_news
 from sentence_transformers import SentenceTransformer, util
+from backend.news_searcher import NewsSearcher
+from datetime import datetime, timedelta
+from typing import List, Dict
+
+# Настройка логирования
+logger = logging.getLogger(__name__)
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -21,41 +28,72 @@ class LLMInference:
             model='GigaChat',
             verify_ssl_certs=False
         )
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        
+        # Инициализируем векторную БД
+        self.news_searcher = NewsSearcher()
+        
+        # Загружаем начальные данные из SQLite
+        self._initialize_vector_db()
+
+    def _initialize_vector_db(self):
+        """Инициализация векторной БД данными из SQLite"""
+        news_items = fetch_latest_news(limit=100)  # Берем последние 100 записей для начальной инициализации
+        if news_items:
+            self.news_searcher.add_news(news_items)
 
     def generate_response(self, prompt: str) -> str:
+        """
+        Генерация ответа на основе контекста из новостей
+        
+        Args:
+            prompt: Вопрос пользователя
+            
+        Returns:
+            str: Ответ модели
+        """
         try:
-            # подтягиваем последние новости
-            latest_news = fetch_latest_news()
+            # Убеждаемся, что prompt - это строка
+            if isinstance(prompt, list):
+                prompt = " ".join(prompt)
+                
+            # Ищем релевантные новости за последние 7 дней
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=7)
+            
+            relevant_docs = self.news_searcher.search_news(
+                query=prompt,
+                start_date=start_date,
+                end_date=end_date,
+                k=5
+            )
+            print('relevant_docs', relevant_docs)
+            
+            # Формируем контекст из найденных документов
+            context_parts = []
+            for doc, score in relevant_docs:
+                context_parts.append(f"Новость (релевантность: {score:.2f}):\n{doc.page_content}")
+            
+            context = "\n\n".join(context_parts)
+            
+            if not context:
+                context = "К сожалению, релевантных новостей не найдено."
+            
+            full_prompt = (
+                "На основе следующих новостей ответь на вопрос. "
+                "Если в новостях нет релевантной информации, так и скажи.\n\n"
+                f"Новости:\n{context}\n\n"
+                f"Вопрос: {prompt}"
+            )
+            print('full_prompt', full_prompt)
 
-            # преобразуем запрос и новости в векторы
-            # prompt_embedding = self.embedding_model.encode(prompt, convert_to_tensor=True)
-            # news_embeddings = self.embedding_model.encode(latest_news, convert_to_tensor=True)
-
-            # вычисляем косинусное сходство
-            # similarities = util.pytorch_cos_sim(prompt_embedding, news_embeddings)
-
-            # выбираем наиболее релевантные новости
-            # top_k = 5  # количество наиболее релевантных новостей
-            # top_k_indices = similarities.topk(k=top_k).indices
-
-            # объединяем контекст наиболее релевантных новостей с запросом
-            # relevant_news = [latest_news[i] for i in top_k_indices]
-            relevant_news = ['дела хорошо', 'дела отлично']
-            news_context = " ".join(relevant_news)
-            print('news_context', news_context)
-            full_prompt = f"Ответь на вопрос, используя следующие новости:\n{news_context}\n вопрос: {prompt}"
-
-            print('try to generate messages')
             messages = [
                 SystemMessage(content="You are a helpful assistant."),
                 HumanMessage(content=full_prompt)
             ]
-            print('try to generate response')
-            response = self.model(messages)
             
-            # Получаем текст ответа из AIMessage
+            response = self.model(messages)
             return response.content
+            # return 'TODO: add good system prompt'
 
         except Exception as e:
             print(f"Error generating response: {e}")
@@ -73,6 +111,6 @@ if __name__ == "__main__": # for testing
             break
         messages.append(HumanMessage(content=user_message))
 
-        response = llm_inference.generate_response(messages)
+        response = llm_inference.generate_response(user_message)
         messages.append(response)
         print("Assistant: ", response)
