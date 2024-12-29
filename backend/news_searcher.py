@@ -4,12 +4,13 @@ from langchain.schema import Document
 from datetime import datetime
 from typing import List, Dict
 import logging
+from tqdm import tqdm
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class NewsSearcher:
-    def __init__(self, persist_directory: str = "./chroma_db"):
+    def __init__(self, persist_directory: str = "./chroma_db", collection_name: str = "news"):
         """
         Инициализация векторного хранилища новостей
         
@@ -19,13 +20,14 @@ class NewsSearcher:
         logger.info(f"Инициализация NewsSearcher с директорией {persist_directory}")
         
         self.embedding_function = SentenceTransformerEmbeddings(
-            model_name="all-MiniLM-L6-v2"
+            model_name="sergeyzh/rubert-tiny-turbo"
         )
         
         try:
             self.db = Chroma(
                 persist_directory=persist_directory,
-                embedding_function=self.embedding_function
+                embedding_function=self.embedding_function,
+                collection_name=collection_name
             )
             logger.info("Векторная БД успешно инициализирована")
         except Exception as e:
@@ -47,7 +49,7 @@ class NewsSearcher:
             documents = []
             ids = []
             
-            for item in news_items:
+            for item in tqdm(news_items):
                 doc = Document(
                     page_content=item['text'],
                     metadata={
@@ -61,7 +63,7 @@ class NewsSearcher:
             
             if documents:
                 self.db.add_documents(documents, ids=ids)
-                # self.db.persist()
+                self.db.persist()
                 logger.info(f"Добавлено {len(documents)} документов в векторную БД")
             
         except Exception as e:
@@ -111,18 +113,14 @@ class NewsSearcher:
             logger.error(f"Ошибка при поиске новостей: {e}")
         raise
 
-
     def get_collection_stats(self) -> Dict:
         """
         Получение статистики о коллекции
-        
-        Returns:
-            Dict: Статистика о количестве документов и другие метрики
         """
         try:
             return {
-                "total_documents": len(self.db.get()),
-                # Можно добавить другие метрики при необходимости
+                "total_documents": self.db._collection.count(),
+                "collection_name": self.db._collection.name
             }
         except Exception as e:
             logger.error(f"Ошибка при получении статистики: {e}")

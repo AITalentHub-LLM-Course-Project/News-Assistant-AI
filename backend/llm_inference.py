@@ -31,13 +31,17 @@ class LLMInference:
         
         # Инициализируем векторную БД
         self.news_searcher = NewsSearcher()
+
+        print('statistics: ', self.news_searcher.get_collection_stats())
         
         # Загружаем начальные данные из SQLite
         self._initialize_vector_db()
 
+        print('statistics: ', self.news_searcher.get_collection_stats())
+
     def _initialize_vector_db(self):
         """Инициализация векторной БД данными из SQLite"""
-        news_items = fetch_latest_news(limit=100)  # Берем последние 100 записей для начальной инициализации
+        news_items = fetch_latest_news()
         if news_items:
             self.news_searcher.add_news(news_items)
 
@@ -56,9 +60,8 @@ class LLMInference:
             if isinstance(prompt, list):
                 prompt = " ".join(prompt)
                 
-            # Ищем релевантные новости за последние 7 дней
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=7)
+            end_date = datetime.now() - timedelta(days=20) # TODO: fix it
+            start_date = end_date - timedelta(days=30) # TODO: fix it
             
             relevant_docs = self.news_searcher.search_news(
                 query=prompt,
@@ -71,7 +74,7 @@ class LLMInference:
             # Формируем контекст из найденных документов
             context_parts = []
             for doc, score in relevant_docs:
-                context_parts.append(f"Новость (релевантность: {score:.2f}):\n{doc.page_content}")
+                context_parts.append(f"Новость:\n{doc.page_content}")
             
             context = "\n\n".join(context_parts)
             
@@ -79,7 +82,7 @@ class LLMInference:
                 context = "К сожалению, релевантных новостей не найдено."
             
             full_prompt = (
-                "На основе следующих новостей ответь на вопрос. "
+                "На основе следующих новостей ответь на вопрос."
                 "Если в новостях нет релевантной информации, так и скажи.\n\n"
                 f"Новости:\n{context}\n\n"
                 f"Вопрос: {prompt}"
@@ -93,7 +96,6 @@ class LLMInference:
             
             response = self.model(messages)
             return response.content
-            # return 'TODO: add good system prompt'
 
         except Exception as e:
             print(f"Error generating response: {e}")

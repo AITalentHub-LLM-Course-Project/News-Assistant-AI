@@ -25,7 +25,7 @@ TELEGRAM_DATA_DIR = os.getenv('TELEGRAM_DATA_DIR', 'telegram_channels_data')
 UPDATE_INTERVAL = int(os.getenv('DOWNLOAD_INTERVAL_MINUTES', 1))
 
 KEYWORDS = [
-    'самокат', ' сим', 'мобильности',
+    'самокат', 'мобильности',
     'электросамокат', 'кикшеринг'
 ]
 
@@ -43,15 +43,15 @@ def parse_timestamp(text):
     return None
 
 def parse_message(text):
-    """Парсит текст сообщения и извлекает временную метку и содержание"""
+    """Парсит текст сообщения и извлекает временную метку, содержание и ссылку на сообщение"""
     lines = text.strip().split('\n')
     timestamp = None
     content = []
     message_link = None
-    
+
     for line in lines:
         if '[202' in line:  # Поиск строки с временной меткой
-            if content:  # Если есть накопленный контент, возвращаем предыдущее сообщение
+            if timestamp is not None and content:  # Если есть накопленный контент, возвращаем предыдущее сообщение
                 yield {
                     'timestamp': timestamp,
                     'text': '\n'.join(content).strip(),
@@ -59,14 +59,27 @@ def parse_message(text):
                 }
                 content = []
                 message_link = None
-            timestamp = parse_timestamp(line)
-            content.append(line)
+            # Извлекаем временную метку
+            timestamp_extracted = parse_timestamp(line)
+            if timestamp_extracted:
+                timestamp = timestamp_extracted
+                # Вычисляем длину временной метки вместе с квадратными скобками
+                # str(timestamp) даст 'YYYY-MM-DD HH:MM:SS+00:00'
+                # Добавляем 2 для учета '[' и ']'
+                timestamp_length = len(str(timestamp)) + 2
+                # Удаляем временную метку из строки
+                line_without_timestamp = line[timestamp_length:].strip()
+                if line_without_timestamp:
+                    content.append(line_without_timestamp)
+            else:
+                # Если временная метка не найдена, добавляем строку как есть
+                content.append(line)
         elif line.startswith('[MESSAGE_LINK:'):
             message_link = line[13:-1]  # Извлекаем ссылку
         elif line.strip():
             content.append(line)
     
-    if content:
+    if timestamp is not None and content:
         yield {
             'timestamp': timestamp,
             'text': '\n'.join(content).strip(),
