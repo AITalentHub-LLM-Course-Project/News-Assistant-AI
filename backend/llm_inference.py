@@ -4,10 +4,8 @@ from dotenv import load_dotenv
 from langchain.chat_models.gigachat import GigaChat
 from langchain.schema import HumanMessage, SystemMessage
 from backend.database import fetch_latest_news
-from sentence_transformers import SentenceTransformer, util
 from backend.news_searcher import NewsSearcher
 from datetime import datetime, timedelta
-from typing import List, Dict
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
@@ -45,12 +43,14 @@ class LLMInference:
         if news_items:
             self.news_searcher.add_news(news_items)
 
-    def generate_response(self, prompt: str) -> str:
+    def generate_response(self, prompt: str, start_date: datetime, end_date: datetime) -> str:
         """
         Генерация ответа на основе контекста из новостей
         
         Args:
             prompt: Вопрос пользователя
+            start_date: Начальная дата для фильтрации
+            end_date: Конечная дата для фильтрации
             
         Returns:
             str: Ответ модели
@@ -59,9 +59,6 @@ class LLMInference:
             # Убеждаемся, что prompt - это строка
             if isinstance(prompt, list):
                 prompt = " ".join(prompt)
-                
-            end_date = datetime.now() - timedelta(days=20) # TODO: fix it
-            start_date = end_date - timedelta(days=30) # TODO: fix it
             
             relevant_docs = self.news_searcher.search_news(
                 query=prompt,
