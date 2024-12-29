@@ -87,7 +87,16 @@ class LLMInference:
             print('full_prompt', full_prompt)
 
             messages = [
-                SystemMessage(content="You are a helpful assistant."),
+                SystemMessage(content=(
+                    """
+                    Вы являетесь экспертом в области саммари новостей о самокатах.
+                    Ваша задача — предоставлять точные сводки и отвечать на специфические вопросы, такие как 
+                    'Какие новые технологии в области самокатов появились за последний год?' или 
+                    'Какие новые законодательные требования для самокатов появились за последний год?'. 
+                    Вы не должны придумывать информацию; все ответы должны основываться на данных, 
+                    полученных из базы данных с использованием функционала RAG (Retrieval-Augmented Generation).
+                    """
+                )),
                 HumanMessage(content=full_prompt)
             ]
             
@@ -100,7 +109,7 @@ class LLMInference:
 
 if __name__ == "__main__": # for testing
     messages = [
-        SystemMessage(content="You are a helpful assistant."), # TODO: add good system prompt
+        SystemMessage(content="You are a helpful assistant."),
     ]
     llm_inference = LLMInference()
 
