@@ -1,1 +1,24 @@
-telegram_channels_data/ 
+# Виртуальное окружение
+venv/
+
+# Кэш Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Данные
+telegram_channels_data/
+chroma_db/
+*.db
+
+# Логи
+logs/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/ 
