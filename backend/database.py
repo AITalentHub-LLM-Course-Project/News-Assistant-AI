@@ -1,6 +1,8 @@
 import sqlite3
 from contextlib import closing
 import logging
+from datetime import datetime
+from typing import List, Dict
 
 def create_table():
     with closing(sqlite3.connect('news.db')) as conn:
@@ -11,7 +13,8 @@ def create_table():
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tg_ch_name TEXT,
                     timestamp DATETIME,
-                    text TEXT
+                    text TEXT,
+                    message_link TEXT
                 )
             ''')
             
@@ -52,7 +55,7 @@ def is_duplicate(timestamp, text):
         count = cursor.fetchone()[0]
         return count > 0
 
-def insert_news(tg_ch_name, timestamp, text):
+def insert_news(tg_ch_name, timestamp, text, message_link):
     try:
         if is_duplicate(timestamp, text):
             logging.info(f"Пропуск дубликата сообщения от {timestamp}")
@@ -61,9 +64,9 @@ def insert_news(tg_ch_name, timestamp, text):
         with closing(sqlite3.connect('news.db')) as conn:
             with conn:
                 conn.execute('''
-                    INSERT INTO news (tg_ch_name, timestamp, text)
-                    VALUES (?, ?, ?)
-                ''', (tg_ch_name, timestamp, text))
+                    INSERT INTO news (tg_ch_name, timestamp, text, message_link)
+                    VALUES (?, ?, ?, ?)
+                ''', (tg_ch_name, timestamp, text, message_link))
         return True
     except sqlite3.IntegrityError:
         logging.info(f"Дубликат сообщения от {timestamp}")
@@ -72,12 +75,35 @@ def insert_news(tg_ch_name, timestamp, text):
         logging.error(f"Ошибка при добавлении сообщения: {str(e)}")
         raise
 
-def fetch_latest_news():
+def fetch_latest_news(limit: int = None) -> List[Dict]:
+    """
+    Получение новостей из БД с метаданными
+    
+    Args:
+        limit: Максимальное количество возвращаемых записей. 
+              Если None - возвращаются все записи
+              
+    Returns:
+        List[Dict]: Список новостей с метаданными
+    """
     with closing(sqlite3.connect('news.db')) as conn:
         with conn:
-            cursor = conn.execute('''
-                SELECT text FROM news
+            query = '''
+                SELECT text, timestamp, tg_ch_name, message_link 
+                FROM news
                 ORDER BY timestamp DESC
-                LIMIT 5
-            ''')
-            return [row[0] for row in cursor.fetchall()] 
+            '''
+            
+            if limit:
+                query += ' LIMIT ?'
+                cursor = conn.execute(query, (limit,))
+            else:
+                cursor = conn.execute(query)
+                
+            rows = cursor.fetchall()
+            return [{
+                'text': row[0],
+                'date': datetime.fromisoformat(row[1]),
+                'channel_id': row[2],
+                'message_id': row[3].split('/')[-1] if row[3] else None
+            } for row in rows] 

@@ -1,9 +1,17 @@
 import os
+import logging
+from dotenv import load_dotenv
 from langchain.chat_models.gigachat import GigaChat
 from langchain.schema import HumanMessage, SystemMessage
 from backend.database import fetch_latest_news
-from sentence_transformers import SentenceTransformer, util
+from backend.news_searcher import NewsSearcher
+from datetime import datetime, timedelta
 
+# Настройка логирования
+logger = logging.getLogger(__name__)
+
+# Загрузка переменных окружения
+load_dotenv()
 
 class LLMInference:
     def __init__(self):
@@ -14,44 +22,94 @@ class LLMInference:
             raise ValueError("API key and model name must be set in environment variables.")
         
         self.model = GigaChat(
-            api_key=self.api_key,
-            model_name=self.model_name,
-            timeout=30,
+            credentials=self.api_key,
+            model='GigaChat',
             verify_ssl_certs=False
         )
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')  # Load a pre-trained BERT model
+        
+        # Инициализируем векторную БД
+        self.news_searcher = NewsSearcher()
 
-    def generate_response(self, prompt: str) -> str:
+        print('statistics: ', self.news_searcher.get_collection_stats())
+        
+        # Загружаем начальные данные из SQLite
+        self._initialize_vector_db()
+
+        print('statistics: ', self.news_searcher.get_collection_stats())
+
+    def _initialize_vector_db(self):
+        """Инициализация векторной БД данными из SQLite"""
+        news_items = fetch_latest_news()
+        if news_items:
+            self.news_searcher.add_news(news_items)
+
+    def generate_response(self, prompt: str, start_date: datetime, end_date: datetime) -> str:
+        """
+        Генерация ответа на основе контекста из новостей
+        
+        Args:
+            prompt: Вопрос пользователя
+            start_date: Начальная дата для фильтрации
+            end_date: Конечная дата для фильтрации
+            
+        Returns:
+            str: Ответ модели
+        """
         try:
-            # подтягиваем последние новости
-            latest_news = fetch_latest_news()
+            # Убеждаемся, что prompt - это строка
+            if isinstance(prompt, list):
+                prompt = " ".join(prompt)
+            
+            relevant_docs = self.news_searcher.search_news(
+                query=prompt,
+                start_date=start_date,
+                end_date=end_date,
+                k=5
+            )
+            print('relevant_docs', relevant_docs)
+            
+            # Формируем контекст из найденных документов
+            context_parts = []
+            for doc, score in relevant_docs:
+                context_parts.append(f"Новость:\n{doc.page_content}")
+            
+            context = "\n\n".join(context_parts)
+            
+            if not context:
+                context = "К сожалению, релевантных новостей не найдено."
+            
+            full_prompt = (
+                "На основе следующих новостей ответь на вопрос."
+                "Если в новостях нет релевантной информации, так и скажи.\n\n"
+                f"Новости:\n{context}\n\n"
+                f"Вопрос: {prompt}"
+            )
+            print('full_prompt', full_prompt)
 
-            # преобразуем запрос и новости в векторы
-            prompt_embedding = self.embedding_model.encode(prompt, convert_to_tensor=True)
-            news_embeddings = self.embedding_model.encode(latest_news, convert_to_tensor=True)
+            messages = [
+                SystemMessage(content=(
+                    """
+                    Вы являетесь экспертом в области саммари новостей о самокатах.
+                    Ваша задача — предоставлять точные сводки и отвечать на специфические вопросы, такие как 
+                    'Какие новые технологии в области самокатов появились за последний год?' или 
+                    'Какие новые законодательные требования для самокатов появились за последний год?'. 
+                    Вы не должны придумывать информацию; все ответы должны основываться на данных, 
+                    полученных из базы данных с использованием функционала RAG (Retrieval-Augmented Generation).
+                    """
+                )),
+                HumanMessage(content=full_prompt)
+            ]
+            
+            response = self.model(messages)
+            return response.content
 
-            # вычисляем косинусное сходство
-            similarities = util.pytorch_cos_sim(prompt_embedding, news_embeddings)
-
-            # выбираем наиболее релевантные новости
-            top_k = 5  # количество наиболее релевантных новостей
-            top_k_indices = similarities.topk(k=top_k).indices
-
-            # объединяем контекст наиболее релевантных новостей с запросом
-            relevant_news = [latest_news[i] for i in top_k_indices]
-            news_context = " ".join(relevant_news)
-            full_prompt = f"Ответь на вопрос, используя следующие новости:\n{news_context}\n вопрос: {prompt}"
-
-            # генерируем ответ
-            response = self.model.invoke(full_prompt)
-            return response
         except Exception as e:
             print(f"Error generating response: {e}")
-            return "An error occurred while generating the response."
+            return f"An error occurred while generating the response: {str(e)}"
 
 if __name__ == "__main__": # for testing
     messages = [
-        SystemMessage(content="You are a helpful assistant."), # TODO: add good system prompt
+        SystemMessage(content="You are a helpful assistant."),
     ]
     llm_inference = LLMInference()
 
@@ -61,6 +119,6 @@ if __name__ == "__main__": # for testing
             break
         messages.append(HumanMessage(content=user_message))
 
-        response = llm_inference.generate_response(messages)
+        response = llm_inference.generate_response(user_message)
         messages.append(response)
         print("Assistant: ", response)
