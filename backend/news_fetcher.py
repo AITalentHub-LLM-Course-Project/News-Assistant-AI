@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from backend.database import create_table, insert_news
 import sys
 from pathlib import Path
+import argparse
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -86,14 +87,21 @@ def parse_message(text):
             'message_link': message_link
         }
 
-def fetch_news_from_telegram():
-    """Читает новости из файлов выгрузки Telegram с фильтрацией по ключевым словам"""
+def fetch_news_from_telegram(full_load=False):
+    """
+    Читает новости из файлов выгрузки Telegram с фильтрацией по ключевым словам
+    
+    Args:
+        full_load (bool): Если True, загружает все файлы. Если False, только последний.
+    """
     news_items = []
     base_dir = Path(TELEGRAM_DATA_DIR)
     
-    # Получаем список каналов из переменных окружения
     channels = os.getenv('TELEGRAM_CHANNELS').split(',')
     logging.info(f"Обрабатываются каналы: {channels}")
+    
+    total_files_processed = 0
+    total_messages_found = 0
     
     for channel in channels:
         channel_dir = base_dir / channel
@@ -101,39 +109,54 @@ def fetch_news_from_telegram():
             logging.warning(f"Папка не найдена для канала {channel}")
             continue
             
-        # Получаем последний файл с сообщениями для канала
         messages_files = list(channel_dir.glob('messages*.txt'))
         if not messages_files:
             logging.warning(f"Файлы с сообщениями не найдены для канала {channel}")
             continue
-            
-        latest_file = max(messages_files, key=lambda x: x.stat().st_mtime)
         
-        try:
-            with open(latest_file, 'r', encoding='utf-8') as f:
-                content = f.read()
+        # Определяем какие файлы обрабатывать
+        files_to_process = messages_files if full_load else [max(messages_files, key=lambda x: x.stat().st_mtime)]
+        logging.info(f"Канал {channel}: найдено {len(messages_files)} файлов, будет обработано {len(files_to_process)}")
+        
+        channel_messages_count = 0
+        for file_path in files_to_process:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                file_messages_count = 0
+                for message in parse_message(content):
+                    if message['timestamp'] and message['text']:
+                        if contains_keywords(message['text']):
+                            news_items.append({
+                                'tg_ch_name': channel,
+                                'timestamp': message['timestamp'],
+                                'text': message['text'],
+                                'message_link': message.get('message_link', '')
+                            })
+                            file_messages_count += 1
                 
-            for message in parse_message(content):
-                if message['timestamp'] and message['text']:
-                    if contains_keywords(message['text']):
-                        news_items.append({
-                            'tg_ch_name': channel,
-                            'timestamp': message['timestamp'],
-                            'text': message['text'],
-                            'message_link': message.get('message_link', '')  # Добавляем ссылку с пустым значением по умолчанию
-                        })
-                        logging.debug(
-                            f"Добавлено сообщение с ключевыми словами: "
-                            f"timestamp={message['timestamp']}"
-                        )
-            
-        except Exception as e:
-            logging.error(f"Ошибка при чтении файла {latest_file}: {str(e)}")
-            continue
-            
+                channel_messages_count += file_messages_count
+                total_files_processed += 1
+                logging.info(f"Обработан файл {file_path.name}: найдено {file_messages_count} релевантных сообщений")
+                            
+            except Exception as e:
+                logging.error(f"Ошибка при чтении файла {file_path}: {str(e)}")
+                continue
+        
+        total_messages_found += channel_messages_count
+        logging.info(f"Канал {channel}: обработано {len(files_to_process)} файлов, найдено {channel_messages_count} релевантных сообщений")
+    
+    logging.info(f"Итого: обработано {total_files_processed} файлов, найдено {total_messages_found} релевантных сообщений")
     return news_items
 
-def fetch_and_store_news():
+def fetch_and_store_news(full_load=False):
+    """
+    Получает и сохраняет новости в БД
+    
+    Args:
+        full_load (bool): Если True, загружает все файлы. Если False, только последний.
+    """
     # Инициализация базы данных
     create_table()
     
@@ -143,7 +166,7 @@ def fetch_and_store_news():
         logging.info("Начало сбора новостей")
         
         # Получение новостей из Telegram
-        news_items = fetch_news_from_telegram()
+        news_items = fetch_news_from_telegram(full_load=full_load)
         
         # Сохранение новостей в БД
         new_items_count = 0
@@ -166,8 +189,12 @@ def fetch_and_store_news():
         raise
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--full-load', action='store_true', help='Загрузить все файлы')
+    args = parser.parse_args()
+    
     try:
-        fetch_and_store_news()
+        fetch_and_store_news(full_load=args.full_load)
     except Exception as e:
         logging.error(f"Критическая ошибка в news_fetcher: {str(e)}", exc_info=True)
         sys.exit(1)
