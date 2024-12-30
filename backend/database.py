@@ -107,3 +107,33 @@ def fetch_latest_news(limit: int = None) -> List[Dict]:
                 'channel_id': row[2],
                 'message_id': row[3].split('/')[-1] if row[3] else None
             } for row in rows] 
+
+def fetch_latest_news_after(timestamp: datetime) -> List[Dict]:
+    """
+    Получение новостей из БД после указанной временной метки
+    
+    Args:
+        timestamp: Временная метка, после которой нужно получить новости
+        
+    Returns:
+        List[Dict]: Список новостей с метаданными
+    """
+    # Преобразуем datetime в строку в нужном формате
+    timestamp_str = timestamp.strftime('%Y-%m-%d %H:%M:%S+00:00')
+    
+    with closing(sqlite3.connect('news.db')) as conn:
+        with conn:
+            cursor = conn.execute('''
+                SELECT text, timestamp, tg_ch_name, message_link 
+                FROM news
+                WHERE datetime(timestamp) > datetime(?)
+                ORDER BY timestamp DESC
+            ''', (timestamp_str,))
+            
+            rows = cursor.fetchall()
+            return [{
+                'text': row[0],
+                'date': datetime.fromisoformat(row[1]),
+                'channel_id': row[2],
+                'message_id': row[3].split('/')[-1] if row[3] else None
+            } for row in rows] 
