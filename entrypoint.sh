@@ -1,9 +1,11 @@
 #!/bin/bash
 
 if [ "$1" = 'llm_api' ]; then
+    rm -f news.db
 
-    python3 backend/news_fetcher.py
+    python -m backend.launcher &
 
+    sleep 15
     # run FastAPI backend
     uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
 
