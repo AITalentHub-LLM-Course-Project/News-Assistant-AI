@@ -60,9 +60,11 @@ def ensure_channel_directory(channel_name):
     return channel_dir
 
 async def run_downloader():
+    # Флаг первого запуска
+    first_run = True
+    
     while True:
         try:
-            # Получаем список каналов
             channels = TELEGRAM_CHANNELS.split(',') if TELEGRAM_CHANNELS else []
             if not channels:
                 logger.error("Не указаны каналы в TELEGRAM_CHANNELS")
@@ -72,12 +74,12 @@ async def run_downloader():
             logger.info(f"Начало цикла загрузки для каналов: {channels}")
             start_time = datetime.now()
             
+            # Загрузка сообщений из Telegram
             for channel in channels:
                 try:
-                    # Проверяем, новый ли это канал
                     message_limit = 10000 if is_new_channel(channel) else MESSAGE_LIMIT
                     channel_dir = ensure_channel_directory(channel)
-
+                    
                     # Запуск скрипта загрузки
                     logger.info(f"Запуск download_channels.py для {channel} с лимитом {message_limit}")
                     download_process = subprocess.Popen(
@@ -109,23 +111,30 @@ async def run_downloader():
                     logger.error(f"Ошибка при обработке канала {channel}: {str(e)}")
                     continue
             
-            # Запуск парсера и сохранения в БД
+            # Запуск парсера с флагом полной загрузки при первом запуске
             logger.info("Запуск news_fetcher.py")
+            cmd = ["python", "-m", "backend.news_fetcher"]
+            if first_run:
+                cmd.append("--full-load")
+
             parser_process = subprocess.run(
-                ["python", "-m", "backend.news_fetcher"],
+                cmd,
                 capture_output=True,
                 text=True
             )
-            
+
+            # Всегда логируем вывод
+            if parser_process.stdout:
+                logger.info(f"STDOUT news_fetcher.py:\n{parser_process.stdout}")
+            if parser_process.stderr:
+                logger.info(f"STDERR news_fetcher.py:\n{parser_process.stderr}")
+
             if parser_process.returncode == 0:
                 execution_time = datetime.now() - start_time
                 logger.info(f"Цикл успешно завершен. Время выполнения: {execution_time}")
+                first_run = False
             else:
-                logger.error(
-                    f"Ошибка при обработке сообщений:\n"
-                    f"STDOUT: {parser_process.stdout}\n"
-                    f"STDERR: {parser_process.stderr}"
-                )
+                logger.error(f"Ошибка при обработке сообщений. Код возврата: {parser_process.returncode}")
             
         except Exception as e:
             logger.exception(f"Критическая ошибка в цикле загрузки: {str(e)}")

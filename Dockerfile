@@ -1,4 +1,4 @@
-FROM python:3.9
+FROM python:3.10-slim
 
 ARG APP_DIR=/app
 WORKDIR "$APP_DIR"

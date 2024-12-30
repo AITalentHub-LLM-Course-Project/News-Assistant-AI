@@ -8,3 +8,5 @@ services:
     ports:
       - "8000:8000"
       - "8501:8501"
+    volumes:
+      - ./telegram_channels_data:/app/telegram_channels_data
