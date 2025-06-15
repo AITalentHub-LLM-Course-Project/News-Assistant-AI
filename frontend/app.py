@@ -1,12 +1,14 @@
-import streamlit as st
-import requests
 from datetime import datetime
+
+import requests
+import streamlit as st
 
 # Настройка страницы
 st.set_page_config(page_title="RAGa и копыта Chatbot", page_icon="🤖", layout="wide")
 
 # Применение пользовательских стилей CSS
-st.markdown("""
+st.markdown(
+    """
 <style>
     .stChat message {
         border-radius: 10px;
@@ -22,30 +24,35 @@ st.markdown("""
         font-size: 16px;
     }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # Конфигурация API
 API_URL = "http://localhost:8000/ask"
 
 # Боковая панель
 with st.sidebar:
-    st.title('🤖 RAGa и копыта Chatbot')
-    st.markdown('''
+    st.title("🤖 RAGa и копыта Chatbot")
+    st.markdown("""
     ## About
     Этот чат-бот создан для помощи в ПДД для электросамокатов.
     Он может ответить на вопросы о:
     - Правилах использования электросамокатов
     - Как вести себя на дороге
     - Расскажет об актуальных правилах ПДД
-    ''')
+    """)
 
 # Основная область чата
 st.title("💬 Ассистент")
 
 # Инициализация истории чата
-if 'messages' not in st.session_state:
+if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "question": "Здравствуйте! Я AI-ассистент. Чем я могу вам помочь сегодня?"}
+        {
+            "role": "assistant",
+            "question": "Здравствуйте! Я AI-ассистент. Чем я могу вам помочь сегодня?",
+        }
     ]
 
 # Отображение истории чата
@@ -57,35 +64,42 @@ for message in st.session_state.messages:
 # Функция для отправки запроса к API
 def query_api(question, start_date_str, end_date_str):
     try:
-        response = requests.post(API_URL, json={
-            "question": question,
-            "start_date": start_date_str,
-            "end_date": end_date_str
-        })
+        response = requests.post(
+            API_URL,
+            json={
+                "question": question,
+                "start_date": start_date_str,
+                "end_date": end_date_str,
+            },
+        )
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        st.error(f"Ошибка при обращении к API: {str(e)}")
+        st.error(f"Ошибка при обращении к API: {e!s}")
         return None
 
 
 # Функция для обработки ввода пользователя
 def handle_user_input(question, start_date_str, end_date_str):
-    st.session_state.messages.append({
-        "role": "user",
-        "question": question,
-        "start_date": start_date_str,
-        "end_date": end_date_str
-    })
+    st.session_state.messages.append(
+        {
+            "role": "user",
+            "question": question,
+            "start_date": start_date_str,
+            "end_date": end_date_str,
+        }
+    )
     with st.chat_message("user"):
         st.markdown(question)
 
-    with st.spinner('AI думает...'):
+    with st.spinner("AI думает..."):
         api_response = query_api(question, start_date_str, end_date_str)
 
-    if api_response and 'answer' in api_response:
-        bot_response = api_response['answer']
-        st.session_state.messages.append({"role": "assistant", "question": bot_response})
+    if api_response and "answer" in api_response:
+        bot_response = api_response["answer"]
+        st.session_state.messages.append(
+            {"role": "assistant", "question": bot_response}
+        )
         with st.chat_message("assistant"):
             st.markdown(bot_response)
     else:
@@ -103,8 +117,11 @@ if question and start_date and end_date:
     handle_user_input(question, start_date_str, end_date_str)
 
 # Кнопка для очистки истории чата
-if st.button('Очистить историю чата'):
+if st.button("Очистить историю чата"):
     st.session_state.messages = [
-        {"role": "assistant", "question": "История чата очищена. Чем я могу вам помочь?"}
+        {
+            "role": "assistant",
+            "question": "История чата очищена. Чем я могу вам помочь?",
+        }
     ]
     st.rerun()
