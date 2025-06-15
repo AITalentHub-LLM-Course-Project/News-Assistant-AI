@@ -10,3 +10,9 @@ langchain-community
 chromadb
 gigachat
 telethon
+
+# Development dependencies
+pre-commit==3.6.0
+ruff==0.3.0
+black==24.1.1
+mypy==1.8.0
