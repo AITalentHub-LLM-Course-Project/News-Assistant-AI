@@ -1,18 +1,27 @@
-fastapi
-uvicorn
-streamlit
-requests
-langchain
-transformers
-torch
-sentence-transformers
-langchain-community
-chromadb
-gigachat
-telethon
+fastapi==0.109.2
+uvicorn==0.27.1
+streamlit==1.31.1
+requests==2.31.0
+langchain==0.1.4
+transformers==4.37.2
+torch==2.7.1
+sentence-transformers==2.2.2
+langchain-community==0.0.16
+chromadb==0.4.22
+gigachat==0.1.10
+telethon==1.33.1
+python-dotenv==1.0.1
 
 # Development dependencies
 pre-commit==3.6.0
 ruff==0.3.0
 black==24.1.1
 mypy==1.8.0
+
+# Analysis dependencies
+pandas==2.2.0
+numpy==1.26.3
+matplotlib==3.8.2
+seaborn==0.13.1
+jupyter==1.0.0
+notebook==7.0.7
